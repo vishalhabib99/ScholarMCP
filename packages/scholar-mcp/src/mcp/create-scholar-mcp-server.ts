@@ -58,6 +58,23 @@ const toToolError = (error: unknown): CallToolResult => {
   };
 };
 
+const trimTrailingPunctuation = (value: string): string => value.replace(/[.,;:)\]]+$/, '');
+
+const findBibtexField = (bibtex: string | undefined, field: string): string | null => {
+  const match = bibtex?.match(new RegExp(`\\b${field}\\s*=\\s*[{"]([^}"]+)[}"]`, 'i'));
+  return match?.[1]?.trim() || null;
+};
+
+const findReferenceDoi = (formatted: string, bibtex?: string): string | null => {
+  const doi = findBibtexField(bibtex, 'doi') ?? formatted.match(/\b10\.\d{4,9}\/[^\s"<>]+/i)?.[0];
+  return doi ? trimTrailingPunctuation(doi) : null;
+};
+
+const findReferenceUrl = (formatted: string, bibtex?: string): string | null => {
+  const url = findBibtexField(bibtex, 'url') ?? formatted.match(/https?:\/\/[^\s"<>]+/i)?.[0];
+  return url ? trimTrailingPunctuation(url) : null;
+};
+
 const manualWorkSchema = z.object({
   title: z.string().min(1),
   abstract: z.string().optional(),
@@ -423,8 +440,8 @@ export const createScholarMcpServer = (
             abstract: null,
             year: null,
             venue: null,
-            doi: null,
-            url: null,
+            doi: findReferenceDoi(reference.formatted, reference.bibtex),
+            url: findReferenceUrl(reference.formatted, reference.bibtex),
             paperId: reference.id ?? `ref-${index + 1}`,
             citationCount: 0,
             influentialCitationCount: 0,

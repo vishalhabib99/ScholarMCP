@@ -204,6 +204,42 @@ describe('createScholarMcpServer', () => {
     });
   });
 
+  it('reads DOI and URL from the provided references when validating citations', async () => {
+    const { createScholarMcpServer } = await import('../src/mcp/create-scholar-mcp-server.js');
+    const { CitationService } = await import('../src/research/citation-service.js');
+    const citationService = new CitationService({} as never);
+    const researchService = {
+      validateManuscriptCitations: citationService.validateManuscriptCitations.bind(citationService)
+    };
+
+    createScholarMcpServer(parseConfig({ NODE_ENV: 'test' }), {} as never, researchService as never, new Logger('error'));
+
+    const validate = registeredTools.get('validate_manuscript_citations');
+    const result = (await validate?.handler({
+      manuscript_text: 'Transformers (Vaswani, 2017) and retrieval (Lewis, 2020) both matter.',
+      style: 'apa',
+      references: [
+        {
+          formatted:
+            'Vaswani, A. (2017). Attention is all you need. NeurIPS. https://doi.org/10.48550/arXiv.1706.03762'
+        },
+        {
+          formatted: 'Lewis, P. (2020). Retrieval-augmented generation for knowledge-intensive NLP tasks. NeurIPS.',
+          bibtex: '@inproceedings{lewis2020, doi={10.48550/arXiv.2005.11401}, url={https://arxiv.org/abs/2005.11401}}'
+        },
+        { formatted: 'Doe, J. (2021). A reference without any identifier. Journal X.' }
+      ]
+    })) as any;
+
+    const diagnostics = result.structuredContent.completenessDiagnostics;
+    expect(diagnostics.map((item: any) => item.missingPersistentIdentifier)).toEqual([false, false, true]);
+    expect(diagnostics[0].missingElements).not.toContain('source');
+    expect(diagnostics[1].missingElements).not.toContain('source');
+    expect(result.structuredContent.styleWarnings).toContain(
+      '1 reference(s) are missing a DOI/URL, which weakens APA traceability requirements.'
+    );
+  });
+
   it('maps known and generic failures into MCP tool errors', async () => {
     const { createScholarMcpServer } = await import('../src/mcp/create-scholar-mcp-server.js');
     const loggerWarn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
